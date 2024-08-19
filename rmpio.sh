@@ -7,7 +7,7 @@ function usage () {
 	exit 1
 }
 
-# логировать сообщения по умолчанию: crit, error, warning, notice
+# logging level by defaults: crit, error, warning, notice
 VERBOSE="${VERBOSE:-5}"
 ME=`basename $0`
 current_dir="$(pwd)"
@@ -162,7 +162,7 @@ function clear_mpio_record() {
 		conf_dir=$(basename -z ${check_dir}/NULL)
 	fi
 
-	# поиск записей внутри dropin директории
+	# search records inside dropin dir
 	if [ -d "$conf_dir" ]; then
 		curr_file=$(grep -r "\b$wwid\$" "$conf_dir" | awk -F: '{print $1}')
 		if [ -n "$curr_file" ]; then
@@ -170,7 +170,7 @@ function clear_mpio_record() {
 		fi
 	fi
 
-	# поиск записей в файле multipath.conf
+	# search records inside multipath.conf file
 	if grep -wq "$wwid" "$main_conf"; then
 		remove_record "$main_conf" "$wwid"
 	fi
@@ -231,7 +231,7 @@ function mpio_wwid_to_alias () {
 }
 
 function is_device_busy () {
-	# Важно !!! данную проверку правильно осуществлять через sysfs уст-ва
+	# Important!!! It is recommended to perform this check correctly through the device's sysfs
 	local device="$1"
 
 	result=$(dmsetup info "$device" | grep -w 'Open count:' | awk '{print $3}')
@@ -295,36 +295,29 @@ while [[ $# -gt 0 ]]; do
 	esac
 done
 
-# Скрипт работает только от супер-пользователя или через sudo
+# need to be root
 if [ $EUID -ne 0 ]; then
     log_error "This script must be run as root" 
     exit 125
 fi
 
-# Массив с командами, которые важно проверить на существование в системе
-# перед запуском основного скрипта, который будет использовать данные команды
 commands=("dmsetup" "multipathd" "blockdev")
 for command in "${commands[@]}"; do
 	is_command_exists "$command"
 done
 
-# Константы для сохранения универсальности
-MPIO_MOD_NAME="dm_multipath"  # имя модуля ядра для multipath
-MPIO_DAEMON_NAME="multipathd" # имя демона multipath
+MPIO_MOD_NAME="dm_multipath"
+MPIO_DAEMON_NAME="multipathd"
 
-# Модуль ядра для multipath загружен ?
 is_module_loaded "$MPIO_MOD_NAME"
 log_debug "Module $MPIO_MOD_NAME is loaded"
 
-# systemd сервис multipath существует ?
 is_systemd_service_exists "$MPIO_DAEMON_NAME"
 log_debug "systemd service $MPIO_DAEMON_NAME exists"
 
-# systemd сервис multipath активен ?
 is_systemd_service_active "$MPIO_DAEMON_NAME"
 log_debug "systemd service $MPIO_DAEMON_NAME is active"
 
-# Если передан alias многопутевого уст-ва, находим его wwid иначе находим его alias
 if [ -n "$mpio_alias" ]; then
 	multipath_wwid=$(mpio_alias_to_wwid "$mpio_alias")
 	multipath_alias="$mpio_alias"
@@ -333,12 +326,9 @@ else
 	multipath_wwid="$mpio_wwid"
 fi
 
-# Это многопутевое уст-во ?
 is_multipath_device "$multipath_wwid"
 log_debug "The device $multipath_wwid ($multipath_alias) is multipath device"
 
-# С этого момента мы оперируем только через wwid или через dm
-# По wwid получаем dm идентификатор
 dm_device="$(mpio_wwid_to_dm $multipath_wwid)"
 dm_device_path="/dev/$dm_device"
 
@@ -346,14 +336,12 @@ log_debug "Device wwid:    $multipath_wwid"
 log_debug "Device alias:   $multipath_alias"
 log_debug "Device dm path: $dm_device_path"
 
-# Данное уст-во используется кем-то ?
 is_device_busy "$dm_device_path"
 log_debug "The device $multipath_wwid ($multipath_alias) not busy"
 
 is_device_in_lvm "$dm_device" "$multipath_alias"
 log_debug "The device $multipath_wwid ($multipath_alias) not in lvm"
 
-# Remove multipath alias from config if exists
 clear_mpio_record "$multipath_wwid"
 
 blockdev --flushbufs "$dm_device_path"
